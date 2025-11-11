@@ -1,0 +1,79 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - streaming
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    networks:
+      - streaming
+
+  cassandra:
+    image: cassandra:3.11
+    environment:
+      - CASSANDRA_RPC_ADDRESS=0.0.0.0
+    ports:
+      - "9042:9042"
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+    networks:
+      - streaming
+
+  producer:
+    build:
+      context: ./python
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPIC=cctv_vehicle_counts
+    networks:
+      - streaming
+
+  consumer:
+    build:
+      context: ./python
+    depends_on:
+      - kafka
+    environment:
+      - SERVICE=consumer
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPIC=cctv_vehicle_counts
+    networks:
+      - streaming
+
+  kafka_to_cassandra:
+    build:
+      context: ./python
+    depends_on:
+      - kafka
+      - cassandra
+    environment:
+      - SERVICE=kafka_to_cassandra
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPIC=cctv_vehicle_counts
+      - CASSANDRA_CONTACT_POINTS=cassandra
+      - CASSANDRA_KEYSPACE=trafficks
+    networks:
+      - streaming
+
+volumes:
+  cassandra-data:
+
+networks:
+  streaming:
+    driver: bridge
